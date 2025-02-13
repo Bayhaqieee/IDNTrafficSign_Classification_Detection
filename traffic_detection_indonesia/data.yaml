@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 30
+names: ['Balai Pertolongan Pertama', 'Banyak Anak-Anak', 'Dilarang Belok Kanan', 'Dilarang Berhenti', 'Dilarang Berjalan Terus', 'Dilarang Masuk', 'Dilarang Mendahului', 'Dilarang Parkir', 'Dilarang Putar Balik', 'Gereja', 'Hati-Hati', 'Jalur Penyebrangan', 'Lampu Lalu Lintas', 'Larangan Kecepatan - 30km-jam', 'Larangan Kecepatan - 40km-jam', 'Larangan Kendaraan MST - 10 Ton', 'Masjid', 'Pemberhentian Bus', 'Perintah Ikuti Bundaran', 'Perintah Jalur Sepeda', 'Perintah Lajur Kiri', 'Perintah Pilih Satu Jalur', 'Persimpangan 3 Prioritas', 'Persimpangan 3 Sisi Kanan Prioritas', 'Persimpangan 3 Sisi Kiri Prioritas', 'Persimpangan Empat', 'Putar Balik', 'Rumah Sakit', 'SPBU', 'Tempat Parkir']
+
+roboflow:
+  workspace: putri-mawaring-wening-lwwcx
+  project: traffic-sign-in-indonesia-detection
+  version: 3
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/putri-mawaring-wening-lwwcx/traffic-sign-in-indonesia-detection/dataset/3
