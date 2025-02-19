@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 40
+names: ['Balai Pertolongan Pertama', 'Banyak Anak-Anak', 'Banyak Tikungan Pertama Kanan', 'Banyak Tikungan Pertama Kiri', 'Berhenti', 'Dilarang Belok Kanan', 'Dilarang Belok Kiri', 'Dilarang Berhenti', 'Dilarang Masuk', 'Dilarang Mendahului', 'Dilarang Parkir', 'Dilarang Putar Balik', 'Gereja', 'Hati-Hati', 'Ikuti Bundaran', 'Jalur Sepeda', 'Kecepatan Maks. 30 km', 'Kecepatan Maks. 40 km', 'Lajur Kiri', 'Lampu Lalu Lintas', 'Larangan Muatan - 10 ton', 'Masjid', 'Pemberhentian Bus', 'Penyebrangan Pejalan Kaki', 'Peringatan Perlintasan Kereta Api', 'Perintah Jalur Penyebrangan', 'Persimpangan 3 Prioritas', 'Persimpangan 3 Prioritas Kanan', 'Persimpangan 3 Prioritas Kiri', 'Persimpangan 3 Sisi Kiri', 'Persimpangan 4', 'Pilih Salah Satu Jalur', 'Polisi Tidur', 'Pom Bensin', 'Putar Balik', 'Rumah Sakit', 'Tempat Parkir', 'Tikungan Ganda Pertama Ke Kanan', 'Tikungan Ganda Pertama Ke Kiri', 'Tikungan Ke Kanan']
+
+roboflow:
+  workspace: bismillah-eoen6
+  project: train2_tugas-akhir
+  version: 9
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/bismillah-eoen6/train2_tugas-akhir/dataset/9
