@@ -2,8 +2,6 @@
 
 Welcome to Our Project! This Project is Focusing on Detecting and Classifying Traffic Sign esp. Indonesian Traffic Sign using (currently) **YOLOv11** and **MobileNetV2**
 
----
-
 ## Dataset
 
 Check out our Dataset here:
@@ -14,8 +12,6 @@ We Use different dataset to Determine our Model Effectivity
 ## Project Status
 
 🚧 **Status**: `Ongoing..`
-
----
 
 ## Project Target
 
@@ -31,7 +27,7 @@ We Use different dataset to Determine our Model Effectivity
 
 ## Technologies
 
-###Classification
+### Classification
 - Python: General-purpose programming language for deep learning and data processing.
 - TensorFlow & Keras: Deep learning framework used to build, train, and optimize neural networks.
 - MobileNetV2: A lightweight, pre-trained deep learning model optimized for mobile and embedded vision applications.
@@ -46,7 +42,7 @@ We Use different dataset to Determine our Model Effectivity
 - os & pathlib: Handle file paths and directories for organizing datasets.
 - Matplotlib: Used for plotting data such as loss curves, accuracy trends, and dataset samples.
 
-###Detection
+### Detection
 - **Python**: General-purpose programming language used for data processing, visualization, and machine learning.
 - **NumPy**: Supports numerical computations, including array manipulations and mathematical operations.
 - **Pandas**: Handles structured data, such as reading, cleaning, and analyzing tabular datasets.
