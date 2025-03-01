@@ -1,1 +1,1406 @@
-{"metadata":{"kernelspec":{"name":"python3","display_name":"Python 3","language":"python"},"language_info":{"name":"python","version":"3.10.12","mimetype":"text/x-python","codemirror_mode":{"name":"ipython","version":3},"pygments_lexer":"ipython3","nbconvert_exporter":"python","file_extension":".py"},"colab":{"provenance":[]},"kaggle":{"accelerator":"gpu","dataSources":[{"sourceId":10791436,"sourceType":"datasetVersion","datasetId":6696835},{"sourceId":10792052,"sourceType":"datasetVersion","datasetId":6697271}],"dockerImageVersionId":30887,"isInternetEnabled":true,"language":"python","sourceType":"notebook","isGpuEnabled":true}},"nbformat_minor":4,"nbformat":4,"cells":[{"cell_type":"code","source":"!pip install ultralytics\n!nvidia-smi\n!pip install optuna","metadata":{"executionInfo":{"elapsed":12336,"status":"ok","timestamp":1740395396005,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"},"user_tz":-420},"id":"IdMGCuK5iics","outputId":"9c3cd1fc-194b-42e8-969c-94ffa5ccdfe2","trusted":true,"execution":{"iopub.status.busy":"2025-02-24T11:55:43.801259Z","iopub.execute_input":"2025-02-24T11:55:43.801569Z","iopub.status.idle":"2025-02-24T11:55:50.875228Z","shell.execute_reply.started":"2025-02-24T11:55:43.801544Z","shell.execute_reply":"2025-02-24T11:55:50.874295Z"}},"outputs":[],"execution_count":null},{"cell_type":"code","source":"import numpy as np\nimport pandas as pd\nimport os\nimport random\nfrom PIL import Image\nimport cv2\nfrom ultralytics import YOLO\nfrom IPython.display import Video\nimport matplotlib.pyplot as plt\nimport seaborn as sns\nsns.set(style='darkgrid')\nimport pathlib\nimport glob\nfrom tqdm.notebook import trange, tqdm\nimport warnings\nimport optuna","metadata":{"executionInfo":{"elapsed":6,"status":"ok","timestamp":1740395396013,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"},"user_tz":-420},"id":"WXz2TvGRdoh0","trusted":true,"execution":{"iopub.status.busy":"2025-02-24T11:55:50.876960Z","iopub.execute_input":"2025-02-24T11:55:50.877345Z","iopub.status.idle":"2025-02-24T11:55:50.884173Z","shell.execute_reply.started":"2025-02-24T11:55:50.877307Z","shell.execute_reply":"2025-02-24T11:55:50.883276Z"}},"outputs":[],"execution_count":null},{"cell_type":"code","source":"Image_dir = '/kaggle/input/indonesia-traffic-sign-dataset-yolov11/train/images'\n\nnum_samples = 9\nimage_files = os.listdir(Image_dir)\n\n# Randomly select num_samples images\nrand_images = random.sample(image_files, num_samples)\n\nfig, axes = plt.subplots(3, 3, figsize=(11, 11))\n\nfor i in range(num_samples):\n    image = rand_images[i]\n    ax = axes[i // 3, i % 3]\n    ax.imshow(plt.imread(os.path.join(Image_dir, image)))\n    ax.set_title(f'Image {i+1}')\n    ax.axis('off')\n\nplt.tight_layout()\nplt.show()","metadata":{"executionInfo":{"elapsed":2878,"status":"ok","timestamp":1740395451305,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"},"user_tz":-420},"id":"KAq14NXJi8ps","outputId":"f3c54d46-ada4-440c-f190-2a02e96a9b09","trusted":true,"execution":{"iopub.status.busy":"2025-02-24T11:55:50.885731Z","iopub.execute_input":"2025-02-24T11:55:50.885996Z","iopub.status.idle":"2025-02-24T11:55:52.962750Z","shell.execute_reply.started":"2025-02-24T11:55:50.885975Z","shell.execute_reply":"2025-02-24T11:55:52.961870Z"}},"outputs":[],"execution_count":null},{"cell_type":"markdown","source":"##Model-Parameter Optimization","metadata":{"id":"cRx9aHedjAX3"}},{"cell_type":"code","source":"# def yolo_objective(trial):\n#     # Sample hyperparameters\n#     lr0 = trial.suggest_float(\"lr0\", 1e-5, 1e-2, log=True)\n#     momentum = trial.suggest_float(\"momentum\", 0.85, 0.95)  # Add momentum\n#     weight_decay = trial.suggest_float(\"weight_decay\", 1e-5, 1e-3, log=True)  # Add weight decay\n#     optimizer = trial.suggest_categorical(\"optimizer\", [\"SGD\", \"Adam\"]) # Add optimizer\n#     dropout = trial.suggest_float(\"dropout\", 0.0, 0.5)\n#     batch = trial.suggest_categorical(\"batch\", [32, 64, 128])\n#     # Add augmentations\n#     fliplr = trial.suggest_categorical(\"fliplr\", [0.0, 0.5, 1.0])\n#     hsv_h = trial.suggest_float(\"hsv_h\", 0.0, 0.1)\n#     hsv_s = trial.suggest_float(\"hsv_s\", 0.0, 0.9)\n#     hsv_v = trial.suggest_float(\"hsv_v\", 0.0, 0.9)\n#     degrees = trial.suggest_float(\"degrees\", 0.0, 45.0)\n#     translate = trial.suggest_float(\"translate\", 0.0, 0.2)\n#     scale = trial.suggest_float(\"scale\", 0.5, 0.99)\n#     shear = trial.suggest_float(\"shear\", 0.0, 10.0)\n\n#     # Build and train the model\n#     model = YOLO('yolo11n.yaml').load('yolo11n.pt')\n#     results = model.train(\n#         data=\"/kaggle/input/indonesia-traffic-sign-dataset-yolov11/data.yaml\",\n#         epochs=10,\n#         imgsz=416,\n#         batch=batch,\n#         lr0=lr0,\n#         dropout=dropout,\n#         fliplr=fliplr,\n#         hsv_h=hsv_h,\n#         hsv_s=hsv_s,\n#         hsv_v=hsv_v,\n#         degrees=degrees,\n#         translate=translate,\n#         scale=scale,\n#         shear=shear,\n#         optimizer=optimizer,\n#         momentum=momentum if optimizer == \"SGD\" else 0.0,  # Conditional momentum\n#         weight_decay=weight_decay,\n#         device=0\n#     )\n\n#     print(f\"lr0: {lr0}, momentum: {momentum}, weight_decay: {weight_decay}\")  # Print variable values\n#     print(f\"optimizer: {optimizer}, dropout: {dropout}, batch: {batch}\")\n\n#     # Return the metric to optimize (e.g., mAP@0.5)\n#     return results.results_dict[\"metrics/mAP50(B)\"]\n\n# study = optuna.create_study(direction=\"maximize\")  # Maximize mAP@0.5\n# study.optimize(yolo_objective, n_trials=20)  # Run 100 trials\n\n\n\n# print(f'Best CV    : {study.best_params}')\n# print(f'Best Score : {study.best_value}')\n\n\n# Best CV    : {'lr0': 0.00847696530576254, 'momentum': 0.9161487200959822, 'weight_decay': 8.940040440220955e-05, 'optimizer': 'SGD', 'dropout': 0.2784791741928995, 'batch': 32, 'fliplr': 0.0, 'hsv_h': 0.05347859072134238, 'hsv_s': 0.29449466762305965, 'hsv_v': 0.584027983109837, 'degrees': 0.0162282968670604, 'translate': 0.05712250032606517, 'scale': 0.8652107976073655, 'shear': 3.129172129671245}\n# Best Score : 0.9917819877169816\n","metadata":{"id":"0toMCpOUig-2","executionInfo":{"status":"error","timestamp":1740395839225,"user_tz":-420,"elapsed":412,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"}},"outputId":"a4667f75-bd72-4ac0-fd01-eb799ddeec0f","trusted":true,"execution":{"iopub.status.busy":"2025-02-24T12:16:31.919450Z","iopub.execute_input":"2025-02-24T12:16:31.919849Z"}},"outputs":[],"execution_count":null},{"cell_type":"code","source":"# Use a pretrained YOLOv11n model\nmodel = YOLO(\"yolo11n.pt\")\n\n# Build from YAML and transfer weights\nFinal_model = YOLO('yolo11n.yaml').load('yolo11n.pt')\n\n# Training The Final Model\nResult_Final_model = Final_model.train(data=\"/kaggle/input/indonesia-traffic-sign-dataset-yolov11/data.yaml\",epochs=100, imgsz = 416, 'lr0': 0.00847696530576254, 'momentum': 0.9161487200959822, 'weight_decay': 8.940040440220955e-05, 'optimizer': 'SGD', 'dropout': 0.2784791741928995, 'batch': 32, 'fliplr': 0.0, 'hsv_h': 0.05347859072134238, 'hsv_s': 0.29449466762305965, 'hsv_v': 0.584027983109837, 'degrees': 0.0162282968670604, 'translate': 0.05712250032606517, 'scale': 0.8652107976073655, 'shear': 3.129172129671245, device = 0)","metadata":{"executionInfo":{"elapsed":66704,"status":"aborted","timestamp":1740395450193,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"},"user_tz":-420},"id":"rPQDURyHj8M_","trusted":true,"execution":{"iopub.status.busy":"2025-02-24T11:28:32.453212Z","iopub.status.idle":"2025-02-24T11:28:32.453562Z","shell.execute_reply":"2025-02-24T11:28:32.453386Z"}},"outputs":[],"execution_count":null},{"cell_type":"code","source":"list_of_metrics = [\"P_curve.png\",\"R_curve.png\",\"confusion_matrix.png\"]","metadata":{"id":"4swsylTilJPZ","executionInfo":{"status":"aborted","timestamp":1740395450199,"user_tz":-420,"elapsed":66704,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"}},"trusted":true,"execution":{"iopub.status.busy":"2025-02-24T11:28:32.454270Z","iopub.status.idle":"2025-02-24T11:28:32.454569Z","shell.execute_reply":"2025-02-24T11:28:32.454427Z"}},"outputs":[],"execution_count":null},{"cell_type":"code","source":"# Load the image\nfor i in list_of_metrics:\n    image = cv2.imread(f'/kaggle/working/runs/detect/train/{i}')\n\n    # Create a larger figure\n    plt.figure(figsize=(16, 12))\n\n    # Display the image\n    plt.imshow(image)\n\n    # Show the plot\n    plt.show()","metadata":{"executionInfo":{"elapsed":66704,"status":"aborted","timestamp":1740395450202,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"},"user_tz":-420},"id":"E6nyOhJcl7C8","trusted":true,"execution":{"iopub.status.busy":"2025-02-24T11:28:32.455251Z","iopub.status.idle":"2025-02-24T11:28:32.455583Z","shell.execute_reply":"2025-02-24T11:28:32.455416Z"}},"outputs":[],"execution_count":null},{"cell_type":"code","source":"# Read the results.csv file as a pandas dataframe\nResult_Final_model = pd.read_csv('/kaggle/working/runs/detect/train/results.csv')\nResult_Final_model.columns = Result_Final_model.columns.str.strip()\n\n# Create subplots\nfig, axs = plt.subplots(nrows=5, ncols=2, figsize=(15, 15))\n\n# Plot the columns using seaborn\nsns.lineplot(x='epoch', y='train/box_loss', data=Result_Final_model, ax=axs[0,0])\nsns.lineplot(x='epoch', y='train/cls_loss', data=Result_Final_model, ax=axs[0,1])\nsns.lineplot(x='epoch', y='train/dfl_loss', data=Result_Final_model, ax=axs[1,0])\nsns.lineplot(x='epoch', y='metrics/precision(B)', data=Result_Final_model, ax=axs[1,1])\nsns.lineplot(x='epoch', y='metrics/recall(B)', data=Result_Final_model, ax=axs[2,0])\nsns.lineplot(x='epoch', y='metrics/mAP50(B)', data=Result_Final_model, ax=axs[2,1])\nsns.lineplot(x='epoch', y='metrics/mAP50-95(B)', data=Result_Final_model, ax=axs[3,0])\nsns.lineplot(x='epoch', y='val/box_loss', data=Result_Final_model, ax=axs[3,1])\nsns.lineplot(x='epoch', y='val/cls_loss', data=Result_Final_model, ax=axs[4,0])\nsns.lineplot(x='epoch', y='val/dfl_loss', data=Result_Final_model, ax=axs[4,1])\n\n# Set titles and axis labels for each subplot\naxs[0,0].set(title='Train Box Loss')\naxs[0,1].set(title='Train Class Loss')\naxs[1,0].set(title='Train DFL Loss')\naxs[1,1].set(title='Metrics Precision (B)')\naxs[2,0].set(title='Metrics Recall (B)')\naxs[2,1].set(title='Metrics mAP50 (B)')\naxs[3,0].set(title='Metrics mAP50-95 (B)')\naxs[3,1].set(title='Validation Box Loss')\naxs[4,0].set(title='Validation Class Loss')\naxs[4,1].set(title='Validation DFL Loss')\n\nplt.suptitle('Training Metrics and Loss', fontsize=24)\nplt.subplots_adjust(top=0.8)\nplt.tight_layout()\nplt.show()","metadata":{"executionInfo":{"elapsed":89,"status":"error","timestamp":1740395379478,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"},"user_tz":-420},"id":"Eto9nu6jl_N0","outputId":"16215d25-5906-4ad8-8754-a9e756ace9da"},"outputs":[],"execution_count":null},{"cell_type":"code","source":"# Loading the best performing model\nValid_model = YOLO('/kaggle/working/runs/detect/train/weights/best.pt')\n\n# Evaluating the model on the testset\nmetrics = Valid_model.val(split = 'test')","metadata":{"executionInfo":{"elapsed":227,"status":"aborted","timestamp":1740395379636,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"},"user_tz":-420},"id":"L3qD_cHdmS0h"},"outputs":[],"execution_count":null},{"cell_type":"code","source":"# final results\nprint(\"precision(B): \", metrics.results_dict[\"metrics/precision(B)\"])\nprint(\"metrics/recall(B): \", metrics.results_dict[\"metrics/recall(B)\"])\nprint(\"metrics/mAP50(B): \", metrics.results_dict[\"metrics/mAP50(B)\"])\nprint(\"metrics/mAP50-95(B): \", metrics.results_dict[\"metrics/mAP50-95(B)\"])","metadata":{"executionInfo":{"elapsed":208,"status":"aborted","timestamp":1740395379644,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"},"user_tz":-420},"id":"jJ-k5X4-mQWr"},"outputs":[],"execution_count":null},{"cell_type":"code","source":"# Path to the directory containing the images\nimage_dir = '/kaggle/input/indonesia-traffic-sign-dataset-yolov11/test/images'\n\n# Get a list of all image files in the directory\nimage_files = [os.path.join(image_dir, file) for file in os.listdir(image_dir) if file.endswith('.jpg')]\n\n# Randomly select 10 images from the directory\nrandom_images = random.sample(image_files, k=10)\n\nfor image_path in random_images:\n    image = cv2.imread(image_path)  # Replace with your preferred method of reading the image\n    results = Final_model.predict([image], save=True, imgsz=416, conf=0.5, iou=0.7)\n    #results.append(result)","metadata":{"executionInfo":{"elapsed":590,"status":"aborted","timestamp":1740395379662,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"},"user_tz":-420},"id":"5uNZcqzbmiFG"},"outputs":[],"execution_count":null},{"cell_type":"code","source":"# View results\nfor i in range(2,9):\n    plt.imshow(plt.imread(f'/content/runs/detect/train/image{i}.jpg'))\n    plt.show()","metadata":{"executionInfo":{"elapsed":580,"status":"aborted","timestamp":1740395379666,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"},"user_tz":-420},"id":"-CVMtf0rmttI"},"outputs":[],"execution_count":null},{"cell_type":"code","source":"import cv2\nimport time\n\n# def limit_video_duration(input_path, output_path, duration_limit=30):\n#     \"\"\"Limits the duration of a video to a specified time.\n\n#     Args:\n#         input_path: Path to the input video file.\n#         output_path: Path to save the limited video file.\n#         duration_limit: Maximum duration of the video in seconds (default: 180 seconds).\n#     \"\"\"\n\n#     cap = cv2.VideoCapture(input_path)\n#     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))\n#     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))\n#     fps = int(cap.get(cv2.CAP_PROP_FPS))\n\n#     fourcc = cv2.VideoWriter_fourcc(*'mp4v')\n#     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))\n\n#     start_time = time.time()\n\n#     while cap.isOpened() and (time.time() - start_time) < duration_limit:\n#         ret, frame = cap.read()\n#         if not ret:\n#             break\n\n#         out.write(frame)  # Write the frame directly without processing\n\n#     cap.release()\n#     out.release()","metadata":{"id":"HOMkmkBqVMWF","executionInfo":{"status":"aborted","timestamp":1740395379671,"user_tz":-420,"elapsed":579,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"}}},"outputs":[],"execution_count":null},{"cell_type":"code","source":"input_video_path = '/kaggle/input/video-tester/test.mp4'\noutput_video_path = '/kaggle/working/limited_video.mp4'\n\nlimit_video_duration(input_video_path, output_video_path)","metadata":{"executionInfo":{"elapsed":23,"status":"error","timestamp":1740395379701,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"},"user_tz":-420},"id":"8I5pw7BKX6ap","outputId":"59f5ce95-5b81-4935-81ec-8b59a2e3104e"},"outputs":[],"execution_count":null},{"cell_type":"code","source":"def prediction_yolo_single_gpu(\n    source: str='/kaggle/working/test.mp4',\n    weights: str='/content/drive/MyDrive/CollabData/TrafficSign_YOLOv11/runs/detect/train2/weights/best.pt',\n    conf: float=0.25,\n    save: bool=True,\n    **kwargs\n    ):\n\n    model = YOLO(weights)\n\n    prediction_results = model.predict(\n        source=source,\n        conf=conf,\n        save=save,\n        **kwargs\n    )\n\n    # Path of input video after prediction\n    avi_path = '/content/runs/detect/predict/result.avi'\n\n    # Path of the output video to be compressed\n    mp4_path = \"/content/result_detection_yolov11.mp4\"\n\n    # Convert .avi to .mp4 using ffmpeg\n    os.system(f\"ffmpeg -i {avi_path} -vcodec libx264 {mp4_path}\")\n\n    return prediction_results\n\nprediction_results = prediction_yolo_single_gpu()","metadata":{"executionInfo":{"elapsed":569,"status":"aborted","timestamp":1740395379682,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"},"user_tz":-420},"id":"5-qGaoVCnQGu"},"outputs":[],"execution_count":null},{"cell_type":"code","source":"import os\nfrom base64 import b64encode\nfrom IPython.display import HTML, display\n\n# Path of input video after prediction\nsave_path = '/content/runs/detect/predict/result.avi'\n\n# Path of the output video to be compressed\ncompressed_path = \"/content/result_detection_yolov11.mp4\"\n\n# Kompres video menggunakan ffmpeg\nos.system(f\"ffmpeg -i {save_path} -vcodec libx264 {compressed_path}\")\n\nif os.path.exists(compressed_path):\n    # Read the compressed video\n    with open(compressed_path, \"rb\") as video_file:\n        video_data = video_file.read()\n\n    # Encode video in base64 so it can be displayed in HTML\n    data_url = \"data:video/mp4;base64,\" + b64encode(video_data).decode()\n\n    # Embed and display video on notebook\n    display(HTML(f\"\"\"\n    <video width=\"640\" height=\"480\" controls>\n          <source src=\"{data_url}\" type=\"video/mp4\">\n    </video>\n    \"\"\"))\nelse:\n    print(\"Video file not found.\")","metadata":{"id":"xnxKsEGzp7Rp","executionInfo":{"status":"ok","timestamp":1740395380594,"user_tz":-420,"elapsed":890,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"}},"outputId":"46d81535-db3d-4650-eed1-88d4072b14b1"},"outputs":[],"execution_count":null},{"cell_type":"code","source":"","metadata":{"id":"4i-LZuWURPTr","executionInfo":{"status":"ok","timestamp":1740395380617,"user_tz":-420,"elapsed":6,"user":{"displayName":"Aditya Bayhaqie","userId":"16906297684641538968"}}},"outputs":[],"execution_count":null}]}
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "26dd98ce",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:21.237398Z",
+     "iopub.status.busy": "2025-03-01T21:26:21.237123Z",
+     "iopub.status.idle": "2025-03-01T21:26:30.029074Z",
+     "shell.execute_reply": "2025-03-01T21:26:30.027998Z"
+    },
+    "executionInfo": {
+     "elapsed": 12336,
+     "status": "ok",
+     "timestamp": 1740395396005,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "IdMGCuK5iics",
+    "outputId": "9c3cd1fc-194b-42e8-969c-94ffa5ccdfe2",
+    "papermill": {
+     "duration": 8.800096,
+     "end_time": "2025-03-01T21:26:30.031442",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:21.231346",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Collecting ultralytics\r\n",
+      "  Downloading ultralytics-8.3.81-py3-none-any.whl.metadata (35 kB)\r\n",
+      "Requirement already satisfied: numpy<=2.1.1,>=1.23.0 in /usr/local/lib/python3.10/dist-packages (from ultralytics) (1.26.4)\r\n",
+      "Requirement already satisfied: matplotlib>=3.3.0 in /usr/local/lib/python3.10/dist-packages (from ultralytics) (3.7.5)\r\n",
+      "Requirement already satisfied: opencv-python>=4.6.0 in /usr/local/lib/python3.10/dist-packages (from ultralytics) (4.10.0.84)\r\n",
+      "Requirement already satisfied: pillow>=7.1.2 in /usr/local/lib/python3.10/dist-packages (from ultralytics) (11.0.0)\r\n",
+      "Requirement already satisfied: pyyaml>=5.3.1 in /usr/local/lib/python3.10/dist-packages (from ultralytics) (6.0.2)\r\n",
+      "Requirement already satisfied: requests>=2.23.0 in /usr/local/lib/python3.10/dist-packages (from ultralytics) (2.32.3)\r\n",
+      "Requirement already satisfied: scipy>=1.4.1 in /usr/local/lib/python3.10/dist-packages (from ultralytics) (1.13.1)\r\n",
+      "Requirement already satisfied: torch>=1.8.0 in /usr/local/lib/python3.10/dist-packages (from ultralytics) (2.5.1+cu121)\r\n",
+      "Requirement already satisfied: torchvision>=0.9.0 in /usr/local/lib/python3.10/dist-packages (from ultralytics) (0.20.1+cu121)\r\n",
+      "Requirement already satisfied: tqdm>=4.64.0 in /usr/local/lib/python3.10/dist-packages (from ultralytics) (4.67.1)\r\n",
+      "Requirement already satisfied: psutil in /usr/local/lib/python3.10/dist-packages (from ultralytics) (5.9.5)\r\n",
+      "Requirement already satisfied: py-cpuinfo in /usr/local/lib/python3.10/dist-packages (from ultralytics) (9.0.0)\r\n",
+      "Requirement already satisfied: pandas>=1.1.4 in /usr/local/lib/python3.10/dist-packages (from ultralytics) (2.2.3)\r\n",
+      "Requirement already satisfied: seaborn>=0.11.0 in /usr/local/lib/python3.10/dist-packages (from ultralytics) (0.12.2)\r\n",
+      "Collecting ultralytics-thop>=2.0.0 (from ultralytics)\r\n",
+      "  Downloading ultralytics_thop-2.0.14-py3-none-any.whl.metadata (9.4 kB)\r\n",
+      "Requirement already satisfied: contourpy>=1.0.1 in /usr/local/lib/python3.10/dist-packages (from matplotlib>=3.3.0->ultralytics) (1.3.1)\r\n",
+      "Requirement already satisfied: cycler>=0.10 in /usr/local/lib/python3.10/dist-packages (from matplotlib>=3.3.0->ultralytics) (0.12.1)\r\n",
+      "Requirement already satisfied: fonttools>=4.22.0 in /usr/local/lib/python3.10/dist-packages (from matplotlib>=3.3.0->ultralytics) (4.55.3)\r\n",
+      "Requirement already satisfied: kiwisolver>=1.0.1 in /usr/local/lib/python3.10/dist-packages (from matplotlib>=3.3.0->ultralytics) (1.4.7)\r\n",
+      "Requirement already satisfied: packaging>=20.0 in /usr/local/lib/python3.10/dist-packages (from matplotlib>=3.3.0->ultralytics) (24.2)\r\n",
+      "Requirement already satisfied: pyparsing>=2.3.1 in /usr/local/lib/python3.10/dist-packages (from matplotlib>=3.3.0->ultralytics) (3.2.0)\r\n",
+      "Requirement already satisfied: python-dateutil>=2.7 in /usr/local/lib/python3.10/dist-packages (from matplotlib>=3.3.0->ultralytics) (2.9.0.post0)\r\n",
+      "Requirement already satisfied: mkl_fft in /usr/local/lib/python3.10/dist-packages (from numpy<=2.1.1,>=1.23.0->ultralytics) (1.3.8)\r\n",
+      "Requirement already satisfied: mkl_random in /usr/local/lib/python3.10/dist-packages (from numpy<=2.1.1,>=1.23.0->ultralytics) (1.2.4)\r\n",
+      "Requirement already satisfied: mkl_umath in /usr/local/lib/python3.10/dist-packages (from numpy<=2.1.1,>=1.23.0->ultralytics) (0.1.1)\r\n",
+      "Requirement already satisfied: mkl in /usr/local/lib/python3.10/dist-packages (from numpy<=2.1.1,>=1.23.0->ultralytics) (2025.0.1)\r\n",
+      "Requirement already satisfied: tbb4py in /usr/local/lib/python3.10/dist-packages (from numpy<=2.1.1,>=1.23.0->ultralytics) (2022.0.0)\r\n",
+      "Requirement already satisfied: mkl-service in /usr/local/lib/python3.10/dist-packages (from numpy<=2.1.1,>=1.23.0->ultralytics) (2.4.1)\r\n",
+      "Requirement already satisfied: pytz>=2020.1 in /usr/local/lib/python3.10/dist-packages (from pandas>=1.1.4->ultralytics) (2025.1)\r\n",
+      "Requirement already satisfied: tzdata>=2022.7 in /usr/local/lib/python3.10/dist-packages (from pandas>=1.1.4->ultralytics) (2025.1)\r\n",
+      "Requirement already satisfied: charset-normalizer<4,>=2 in /usr/local/lib/python3.10/dist-packages (from requests>=2.23.0->ultralytics) (3.4.1)\r\n",
+      "Requirement already satisfied: idna<4,>=2.5 in /usr/local/lib/python3.10/dist-packages (from requests>=2.23.0->ultralytics) (3.10)\r\n",
+      "Requirement already satisfied: urllib3<3,>=1.21.1 in /usr/local/lib/python3.10/dist-packages (from requests>=2.23.0->ultralytics) (2.3.0)\r\n",
+      "Requirement already satisfied: certifi>=2017.4.17 in /usr/local/lib/python3.10/dist-packages (from requests>=2.23.0->ultralytics) (2025.1.31)\r\n",
+      "Requirement already satisfied: filelock in /usr/local/lib/python3.10/dist-packages (from torch>=1.8.0->ultralytics) (3.17.0)\r\n",
+      "Requirement already satisfied: typing-extensions>=4.8.0 in /usr/local/lib/python3.10/dist-packages (from torch>=1.8.0->ultralytics) (4.12.2)\r\n",
+      "Requirement already satisfied: networkx in /usr/local/lib/python3.10/dist-packages (from torch>=1.8.0->ultralytics) (3.4.2)\r\n",
+      "Requirement already satisfied: jinja2 in /usr/local/lib/python3.10/dist-packages (from torch>=1.8.0->ultralytics) (3.1.4)\r\n",
+      "Requirement already satisfied: fsspec in /usr/local/lib/python3.10/dist-packages (from torch>=1.8.0->ultralytics) (2024.9.0)\r\n",
+      "Requirement already satisfied: sympy==1.13.1 in /usr/local/lib/python3.10/dist-packages (from torch>=1.8.0->ultralytics) (1.13.1)\r\n",
+      "Requirement already satisfied: mpmath<1.4,>=1.1.0 in /usr/local/lib/python3.10/dist-packages (from sympy==1.13.1->torch>=1.8.0->ultralytics) (1.3.0)\r\n",
+      "Requirement already satisfied: six>=1.5 in /usr/local/lib/python3.10/dist-packages (from python-dateutil>=2.7->matplotlib>=3.3.0->ultralytics) (1.17.0)\r\n",
+      "Requirement already satisfied: MarkupSafe>=2.0 in /usr/local/lib/python3.10/dist-packages (from jinja2->torch>=1.8.0->ultralytics) (3.0.2)\r\n",
+      "Requirement already satisfied: intel-openmp>=2024 in /usr/local/lib/python3.10/dist-packages (from mkl->numpy<=2.1.1,>=1.23.0->ultralytics) (2024.2.0)\r\n",
+      "Requirement already satisfied: tbb==2022.* in /usr/local/lib/python3.10/dist-packages (from mkl->numpy<=2.1.1,>=1.23.0->ultralytics) (2022.0.0)\r\n",
+      "Requirement already satisfied: tcmlib==1.* in /usr/local/lib/python3.10/dist-packages (from tbb==2022.*->mkl->numpy<=2.1.1,>=1.23.0->ultralytics) (1.2.0)\r\n",
+      "Requirement already satisfied: intel-cmplr-lib-rt in /usr/local/lib/python3.10/dist-packages (from mkl_umath->numpy<=2.1.1,>=1.23.0->ultralytics) (2024.2.0)\r\n",
+      "Requirement already satisfied: intel-cmplr-lib-ur==2024.2.0 in /usr/local/lib/python3.10/dist-packages (from intel-openmp>=2024->mkl->numpy<=2.1.1,>=1.23.0->ultralytics) (2024.2.0)\r\n",
+      "Downloading ultralytics-8.3.81-py3-none-any.whl (922 kB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m922.1/922.1 kB\u001b[0m \u001b[31m23.7 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading ultralytics_thop-2.0.14-py3-none-any.whl (26 kB)\r\n",
+      "Installing collected packages: ultralytics-thop, ultralytics\r\n",
+      "Successfully installed ultralytics-8.3.81 ultralytics-thop-2.0.14\r\n",
+      "Sat Mar  1 21:26:26 2025       \r\n",
+      "+-----------------------------------------------------------------------------------------+\r\n",
+      "| NVIDIA-SMI 560.35.03              Driver Version: 560.35.03      CUDA Version: 12.6     |\r\n",
+      "|-----------------------------------------+------------------------+----------------------+\r\n",
+      "| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |\r\n",
+      "| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |\r\n",
+      "|                                         |                        |               MIG M. |\r\n",
+      "|=========================================+========================+======================|\r\n",
+      "|   0  Tesla P100-PCIE-16GB           Off |   00000000:00:04.0 Off |                    0 |\r\n",
+      "| N/A   37C    P0             26W /  250W |       0MiB /  16384MiB |      0%      Default |\r\n",
+      "|                                         |                        |                  N/A |\r\n",
+      "+-----------------------------------------+------------------------+----------------------+\r\n",
+      "                                                                                         \r\n",
+      "+-----------------------------------------------------------------------------------------+\r\n",
+      "| Processes:                                                                              |\r\n",
+      "|  GPU   GI   CI        PID   Type   Process name                              GPU Memory |\r\n",
+      "|        ID   ID                                                               Usage      |\r\n",
+      "|=========================================================================================|\r\n",
+      "|  No running processes found                                                             |\r\n",
+      "+-----------------------------------------------------------------------------------------+\r\n",
+      "Requirement already satisfied: optuna in /usr/local/lib/python3.10/dist-packages (4.2.0)\r\n",
+      "Requirement already satisfied: alembic>=1.5.0 in /usr/local/lib/python3.10/dist-packages (from optuna) (1.14.1)\r\n",
+      "Requirement already satisfied: colorlog in /usr/local/lib/python3.10/dist-packages (from optuna) (6.9.0)\r\n",
+      "Requirement already satisfied: numpy in /usr/local/lib/python3.10/dist-packages (from optuna) (1.26.4)\r\n",
+      "Requirement already satisfied: packaging>=20.0 in /usr/local/lib/python3.10/dist-packages (from optuna) (24.2)\r\n",
+      "Requirement already satisfied: sqlalchemy>=1.4.2 in /usr/local/lib/python3.10/dist-packages (from optuna) (2.0.36)\r\n",
+      "Requirement already satisfied: tqdm in /usr/local/lib/python3.10/dist-packages (from optuna) (4.67.1)\r\n",
+      "Requirement already satisfied: PyYAML in /usr/local/lib/python3.10/dist-packages (from optuna) (6.0.2)\r\n",
+      "Requirement already satisfied: Mako in /usr/local/lib/python3.10/dist-packages (from alembic>=1.5.0->optuna) (1.3.9)\r\n",
+      "Requirement already satisfied: typing-extensions>=4 in /usr/local/lib/python3.10/dist-packages (from alembic>=1.5.0->optuna) (4.12.2)\r\n",
+      "Requirement already satisfied: greenlet!=0.4.17 in /usr/local/lib/python3.10/dist-packages (from sqlalchemy>=1.4.2->optuna) (3.1.1)\r\n",
+      "Requirement already satisfied: mkl_fft in /usr/local/lib/python3.10/dist-packages (from numpy->optuna) (1.3.8)\r\n",
+      "Requirement already satisfied: mkl_random in /usr/local/lib/python3.10/dist-packages (from numpy->optuna) (1.2.4)\r\n",
+      "Requirement already satisfied: mkl_umath in /usr/local/lib/python3.10/dist-packages (from numpy->optuna) (0.1.1)\r\n",
+      "Requirement already satisfied: mkl in /usr/local/lib/python3.10/dist-packages (from numpy->optuna) (2025.0.1)\r\n",
+      "Requirement already satisfied: tbb4py in /usr/local/lib/python3.10/dist-packages (from numpy->optuna) (2022.0.0)\r\n",
+      "Requirement already satisfied: mkl-service in /usr/local/lib/python3.10/dist-packages (from numpy->optuna) (2.4.1)\r\n",
+      "Requirement already satisfied: MarkupSafe>=0.9.2 in /usr/local/lib/python3.10/dist-packages (from Mako->alembic>=1.5.0->optuna) (3.0.2)\r\n",
+      "Requirement already satisfied: intel-openmp>=2024 in /usr/local/lib/python3.10/dist-packages (from mkl->numpy->optuna) (2024.2.0)\r\n",
+      "Requirement already satisfied: tbb==2022.* in /usr/local/lib/python3.10/dist-packages (from mkl->numpy->optuna) (2022.0.0)\r\n",
+      "Requirement already satisfied: tcmlib==1.* in /usr/local/lib/python3.10/dist-packages (from tbb==2022.*->mkl->numpy->optuna) (1.2.0)\r\n",
+      "Requirement already satisfied: intel-cmplr-lib-rt in /usr/local/lib/python3.10/dist-packages (from mkl_umath->numpy->optuna) (2024.2.0)\r\n",
+      "Requirement already satisfied: intel-cmplr-lib-ur==2024.2.0 in /usr/local/lib/python3.10/dist-packages (from intel-openmp>=2024->mkl->numpy->optuna) (2024.2.0)\r\n"
+     ]
+    }
+   ],
+   "source": [
+    "!pip install ultralytics\n",
+    "!nvidia-smi\n",
+    "!pip install optuna"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "a7f00cee",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:30.042626Z",
+     "iopub.status.busy": "2025-03-01T21:26:30.042361Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.090061Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.089113Z"
+    },
+    "executionInfo": {
+     "elapsed": 6,
+     "status": "ok",
+     "timestamp": 1740395396013,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "WXz2TvGRdoh0",
+    "papermill": {
+     "duration": 8.05481,
+     "end_time": "2025-03-01T21:26:38.091767",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:30.036957",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Creating new Ultralytics Settings v0.0.6 file ✅ \n",
+      "View Ultralytics Settings with 'yolo settings' or at '/root/.config/Ultralytics/settings.json'\n",
+      "Update Settings with 'yolo settings key=value', i.e. 'yolo settings runs_dir=path/to/dir'. For help see https://docs.ultralytics.com/quickstart/#ultralytics-settings.\n"
+     ]
+    }
+   ],
+   "source": [
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "import os\n",
+    "import random\n",
+    "from PIL import Image\n",
+    "import cv2\n",
+    "from ultralytics import YOLO\n",
+    "from IPython.display import Video\n",
+    "import matplotlib.pyplot as plt\n",
+    "import seaborn as sns\n",
+    "sns.set(style='darkgrid')\n",
+    "import pathlib\n",
+    "import glob\n",
+    "from tqdm.notebook import trange, tqdm\n",
+    "import warnings\n",
+    "import optuna"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "5c6719a0",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.103046Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.102654Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.106419Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.105358Z"
+    },
+    "executionInfo": {
+     "elapsed": 2878,
+     "status": "ok",
+     "timestamp": 1740395451305,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "KAq14NXJi8ps",
+    "outputId": "f3c54d46-ada4-440c-f190-2a02e96a9b09",
+    "papermill": {
+     "duration": 0.010853,
+     "end_time": "2025-03-01T21:26:38.107963",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.097110",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# Image_dir = '/kaggle/input/indonesia-traffic-sign-dataset-yolov11/train/images'\n",
+    "\n",
+    "# num_samples = 9\n",
+    "# image_files = os.listdir(Image_dir)\n",
+    "\n",
+    "# # Randomly select num_samples images\n",
+    "# rand_images = random.sample(image_files, num_samples)\n",
+    "\n",
+    "# fig, axes = plt.subplots(3, 3, figsize=(11, 11))\n",
+    "\n",
+    "# for i in range(num_samples):\n",
+    "#     image = rand_images[i]\n",
+    "#     ax = axes[i // 3, i % 3]\n",
+    "#     ax.imshow(plt.imread(os.path.join(Image_dir, image)))\n",
+    "#     ax.set_title(f'Image {i+1}')\n",
+    "#     ax.axis('off')\n",
+    "\n",
+    "# plt.tight_layout()\n",
+    "# plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "f082af46",
+   "metadata": {
+    "id": "cRx9aHedjAX3",
+    "papermill": {
+     "duration": 0.004693,
+     "end_time": "2025-03-01T21:26:38.117509",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.112816",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "##Model-Parameter Optimization"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "bc50a6d3",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.127678Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.127471Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.130627Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.130031Z"
+    },
+    "executionInfo": {
+     "elapsed": 412,
+     "status": "error",
+     "timestamp": 1740395839225,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "0toMCpOUig-2",
+    "outputId": "a4667f75-bd72-4ac0-fd01-eb799ddeec0f",
+    "papermill": {
+     "duration": 0.009588,
+     "end_time": "2025-03-01T21:26:38.131772",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.122184",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# def yolo_objective(trial):\n",
+    "#     # Sample hyperparameters\n",
+    "#     lr0 = trial.suggest_float(\"lr0\", 1e-5, 1e-2, log=True)\n",
+    "#     momentum = trial.suggest_float(\"momentum\", 0.85, 0.95)  # Add momentum\n",
+    "#     weight_decay = trial.suggest_float(\"weight_decay\", 1e-5, 1e-3, log=True)  # Add weight decay\n",
+    "#     optimizer = trial.suggest_categorical(\"optimizer\", [\"SGD\", \"Adam\"]) # Add optimizer\n",
+    "#     dropout = trial.suggest_float(\"dropout\", 0.0, 0.5)\n",
+    "#     batch = trial.suggest_categorical(\"batch\", [32, 64, 128])\n",
+    "#     # Add augmentations\n",
+    "#     fliplr = trial.suggest_categorical(\"fliplr\", [0.0, 0.5, 1.0])\n",
+    "#     hsv_h = trial.suggest_float(\"hsv_h\", 0.0, 0.1)\n",
+    "#     hsv_s = trial.suggest_float(\"hsv_s\", 0.0, 0.9)\n",
+    "#     hsv_v = trial.suggest_float(\"hsv_v\", 0.0, 0.9)\n",
+    "#     degrees = trial.suggest_float(\"degrees\", 0.0, 45.0)\n",
+    "#     translate = trial.suggest_float(\"translate\", 0.0, 0.2)\n",
+    "#     scale = trial.suggest_float(\"scale\", 0.5, 0.99)\n",
+    "#     shear = trial.suggest_float(\"shear\", 0.0, 10.0)\n",
+    "\n",
+    "#     # Build and train the model\n",
+    "#     model = YOLO('yolo11n.yaml').load('yolo11n.pt')\n",
+    "#     results = model.train(\n",
+    "#         data=\"/kaggle/input/indonesia-traffic-sign-dataset-yolov11/data.yaml\",\n",
+    "#         epochs=10,\n",
+    "#         imgsz=416,\n",
+    "#         batch=batch,\n",
+    "#         lr0=lr0,\n",
+    "#         dropout=dropout,\n",
+    "#         fliplr=fliplr,\n",
+    "#         hsv_h=hsv_h,\n",
+    "#         hsv_s=hsv_s,\n",
+    "#         hsv_v=hsv_v,\n",
+    "#         degrees=degrees,\n",
+    "#         translate=translate,\n",
+    "#         scale=scale,\n",
+    "#         shear=shear,\n",
+    "#         optimizer=optimizer,\n",
+    "#         momentum=momentum if optimizer == \"SGD\" else 0.0,  # Conditional momentum\n",
+    "#         weight_decay=weight_decay,\n",
+    "#         device=0\n",
+    "#     )\n",
+    "\n",
+    "#     print(f\"lr0: {lr0}, momentum: {momentum}, weight_decay: {weight_decay}\")  # Print variable values\n",
+    "#     print(f\"optimizer: {optimizer}, dropout: {dropout}, batch: {batch}\")\n",
+    "\n",
+    "#     # Return the metric to optimize (e.g., mAP@0.5)\n",
+    "#     return results.results_dict[\"metrics/mAP50(B)\"]\n",
+    "\n",
+    "# study = optuna.create_study(direction=\"maximize\")  # Maximize mAP@0.5\n",
+    "# study.optimize(yolo_objective, n_trials=20)  # Run 100 trials\n",
+    "\n",
+    "\n",
+    "\n",
+    "# print(f'Best CV    : {study.best_params}')\n",
+    "# print(f'Best Score : {study.best_value}')\n",
+    "\n",
+    "\n",
+    "# Best CV    : {'lr0': 0.00847696530576254, 'momentum': 0.9161487200959822, 'weight_decay': 8.940040440220955e-05, 'optimizer': 'SGD', 'dropout': 0.2784791741928995, 'batch': 32, 'fliplr': 0.0, 'hsv_h': 0.05347859072134238, 'hsv_s': 0.29449466762305965, 'hsv_v': 0.584027983109837, 'degrees': 0.0162282968670604, 'translate': 0.05712250032606517, 'scale': 0.8652107976073655, 'shear': 3.129172129671245}\n",
+    "# Best Score : 0.9917819877169816\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "00a29b03",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.142033Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.141825Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.144840Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.144227Z"
+    },
+    "executionInfo": {
+     "elapsed": 66704,
+     "status": "aborted",
+     "timestamp": 1740395450193,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "rPQDURyHj8M_",
+    "papermill": {
+     "duration": 0.009399,
+     "end_time": "2025-03-01T21:26:38.145921",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.136522",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# # Use a pretrained YOLOv11n model\n",
+    "# model = YOLO(\"yolo11n.pt\")\n",
+    "\n",
+    "# # Build from YAML and transfer weights\n",
+    "# Final_model = YOLO('yolo11n.yaml').load('yolo11n.pt')\n",
+    "\n",
+    "# yolo_args = {\n",
+    "#         'data': \"/kaggle/input/indonesia-traffic-sign-dataset-yolov11/data.yaml\",\n",
+    "#         'epochs': 100, \n",
+    "#         'imgsz': 416, \n",
+    "#         'lr0': 0.00847696530576254, \n",
+    "#         'momentum': 0.9161487200959822, \n",
+    "#         'weight_decay': 8.940040440220955e-05, \n",
+    "#         'optimizer': 'SGD', \n",
+    "#         'dropout': 0.2784791741928995, \n",
+    "#         'batch': 32, \n",
+    "#         'fliplr': 0.0, \n",
+    "#         'hsv_h': 0.05347859072134238, \n",
+    "#         'hsv_s': 0.29449466762305965, \n",
+    "#         'hsv_v': 0.584027983109837, \n",
+    "#         'degrees': 0.0162282968670604, \n",
+    "#         'translate': 0.05712250032606517, \n",
+    "#         'scale': 0.8652107976073655, \n",
+    "#         'shear': 3.129172129671245, \n",
+    "#         'device': 0 \n",
+    "#     }\n",
+    "\n",
+    "# # Training The Final Model\n",
+    "# Result_Final_model = Final_model.train(**yolo_args)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "7a4f30a5",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.156260Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.156043Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.158936Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.158340Z"
+    },
+    "executionInfo": {
+     "elapsed": 66704,
+     "status": "aborted",
+     "timestamp": 1740395450199,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "4swsylTilJPZ",
+    "papermill": {
+     "duration": 0.009445,
+     "end_time": "2025-03-01T21:26:38.160075",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.150630",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# list_of_metrics = [\"P_curve.png\",\"R_curve.png\",\"confusion_matrix.png\"]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "54d19c49",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.170445Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.170240Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.173087Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.172466Z"
+    },
+    "executionInfo": {
+     "elapsed": 66704,
+     "status": "aborted",
+     "timestamp": 1740395450202,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "E6nyOhJcl7C8",
+    "papermill": {
+     "duration": 0.009309,
+     "end_time": "2025-03-01T21:26:38.174295",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.164986",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# # Load the image\n",
+    "# for i in list_of_metrics:\n",
+    "#     image = cv2.imread(f'/kaggle/working/runs/detect/train2/{i}')\n",
+    "\n",
+    "#     # Create a larger figure\n",
+    "#     plt.figure(figsize=(16, 12))\n",
+    "\n",
+    "#     # Display the image\n",
+    "#     plt.imshow(image)\n",
+    "\n",
+    "#     # Show the plot\n",
+    "#     plt.show()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "4a950832",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.184595Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.184382Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.187446Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.186867Z"
+    },
+    "executionInfo": {
+     "elapsed": 89,
+     "status": "error",
+     "timestamp": 1740395379478,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "Eto9nu6jl_N0",
+    "outputId": "16215d25-5906-4ad8-8754-a9e756ace9da",
+    "papermill": {
+     "duration": 0.009438,
+     "end_time": "2025-03-01T21:26:38.188570",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.179132",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# # Read the results.csv file as a pandas dataframe\n",
+    "# Result_Final_model = pd.read_csv('/kaggle/working/runs/detect/train2/results.csv')\n",
+    "# Result_Final_model.columns = Result_Final_model.columns.str.strip()\n",
+    "\n",
+    "# # Create subplots\n",
+    "# fig, axs = plt.subplots(nrows=5, ncols=2, figsize=(15, 15))\n",
+    "\n",
+    "# # Plot the columns using seaborn\n",
+    "# sns.lineplot(x='epoch', y='train/box_loss', data=Result_Final_model, ax=axs[0,0])\n",
+    "# sns.lineplot(x='epoch', y='train/cls_loss', data=Result_Final_model, ax=axs[0,1])\n",
+    "# sns.lineplot(x='epoch', y='train/dfl_loss', data=Result_Final_model, ax=axs[1,0])\n",
+    "# sns.lineplot(x='epoch', y='metrics/precision(B)', data=Result_Final_model, ax=axs[1,1])\n",
+    "# sns.lineplot(x='epoch', y='metrics/recall(B)', data=Result_Final_model, ax=axs[2,0])\n",
+    "# sns.lineplot(x='epoch', y='metrics/mAP50(B)', data=Result_Final_model, ax=axs[2,1])\n",
+    "# sns.lineplot(x='epoch', y='metrics/mAP50-95(B)', data=Result_Final_model, ax=axs[3,0])\n",
+    "# sns.lineplot(x='epoch', y='val/box_loss', data=Result_Final_model, ax=axs[3,1])\n",
+    "# sns.lineplot(x='epoch', y='val/cls_loss', data=Result_Final_model, ax=axs[4,0])\n",
+    "# sns.lineplot(x='epoch', y='val/dfl_loss', data=Result_Final_model, ax=axs[4,1])\n",
+    "\n",
+    "# # Set titles and axis labels for each subplot\n",
+    "# axs[0,0].set(title='Train Box Loss')\n",
+    "# axs[0,1].set(title='Train Class Loss')\n",
+    "# axs[1,0].set(title='Train DFL Loss')\n",
+    "# axs[1,1].set(title='Metrics Precision (B)')\n",
+    "# axs[2,0].set(title='Metrics Recall (B)')\n",
+    "# axs[2,1].set(title='Metrics mAP50 (B)')\n",
+    "# axs[3,0].set(title='Metrics mAP50-95 (B)')\n",
+    "# axs[3,1].set(title='Validation Box Loss')\n",
+    "# axs[4,0].set(title='Validation Class Loss')\n",
+    "# axs[4,1].set(title='Validation DFL Loss')\n",
+    "\n",
+    "# plt.suptitle('Training Metrics and Loss', fontsize=24)\n",
+    "# plt.subplots_adjust(top=0.8)\n",
+    "# plt.tight_layout()\n",
+    "# plt.show()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "id": "ef5538a6",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.198948Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.198724Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.201585Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.200936Z"
+    },
+    "executionInfo": {
+     "elapsed": 227,
+     "status": "aborted",
+     "timestamp": 1740395379636,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "L3qD_cHdmS0h",
+    "papermill": {
+     "duration": 0.009397,
+     "end_time": "2025-03-01T21:26:38.202869",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.193472",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# # Loading the best performing model\n",
+    "# Valid_model = YOLO('/kaggle/working/runs/detect/train2/weights/best.pt')\n",
+    "\n",
+    "# # Evaluating the model on the testset\n",
+    "# metrics = Valid_model.val(split = 'test')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "id": "17652c05",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.213932Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.213726Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.216593Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.215957Z"
+    },
+    "executionInfo": {
+     "elapsed": 208,
+     "status": "aborted",
+     "timestamp": 1740395379644,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "jJ-k5X4-mQWr",
+    "papermill": {
+     "duration": 0.009354,
+     "end_time": "2025-03-01T21:26:38.217735",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.208381",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# # final results\n",
+    "# print(\"precision(B): \", metrics.results_dict[\"metrics/precision(B)\"])\n",
+    "# print(\"metrics/recall(B): \", metrics.results_dict[\"metrics/recall(B)\"])\n",
+    "# print(\"metrics/mAP50(B): \", metrics.results_dict[\"metrics/mAP50(B)\"])\n",
+    "# print(\"metrics/mAP50-95(B): \", metrics.results_dict[\"metrics/mAP50-95(B)\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "id": "c05dbfa8",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.228215Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.227988Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.230823Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.230214Z"
+    },
+    "executionInfo": {
+     "elapsed": 590,
+     "status": "aborted",
+     "timestamp": 1740395379662,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "5uNZcqzbmiFG",
+    "papermill": {
+     "duration": 0.009228,
+     "end_time": "2025-03-01T21:26:38.231899",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.222671",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# # Path to the directory containing the images\n",
+    "# image_dir = '/kaggle/input/indonesia-traffic-sign-dataset-yolov11/test/images'\n",
+    "\n",
+    "# # Get a list of all image files in the directory\n",
+    "# image_files = [os.path.join(image_dir, file) for file in os.listdir(image_dir) if file.endswith('.jpg')]\n",
+    "\n",
+    "# # Randomly select 10 images from the directory\n",
+    "# random_images = random.sample(image_files, k=10)\n",
+    "\n",
+    "# for image_path in random_images:\n",
+    "#     image = cv2.imread(image_path)  # Replace with your preferred method of reading the image\n",
+    "#     results = Final_model.predict([image], save=True, imgsz=416, conf=0.5, iou=0.7)\n",
+    "#     #results.append(result)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "id": "bc76544e",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.242217Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.242006Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.244734Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.244121Z"
+    },
+    "executionInfo": {
+     "elapsed": 580,
+     "status": "aborted",
+     "timestamp": 1740395379666,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "-CVMtf0rmttI",
+    "papermill": {
+     "duration": 0.008992,
+     "end_time": "2025-03-01T21:26:38.245782",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.236790",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# # View results\n",
+    "# for i in range(2,9):\n",
+    "#     plt.imshow(plt.imread(f'/content/runs/detect/train{i}/image.jpg'))\n",
+    "#     plt.show()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "id": "bf38a634",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.256484Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.256256Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.259415Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.258775Z"
+    },
+    "executionInfo": {
+     "elapsed": 579,
+     "status": "aborted",
+     "timestamp": 1740395379671,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "HOMkmkBqVMWF",
+    "papermill": {
+     "duration": 0.009837,
+     "end_time": "2025-03-01T21:26:38.260646",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.250809",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# import cv2\n",
+    "# import time\n",
+    "\n",
+    "# def limit_video_duration(input_path, output_path, duration_limit=30):\n",
+    "#     \"\"\"Limits the duration of a video to a specified time.\n",
+    "\n",
+    "#     Args:\n",
+    "#         input_path: Path to the input video file.\n",
+    "#         output_path: Path to save the limited video file.\n",
+    "#         duration_limit: Maximum duration of the video in seconds (default: 180 seconds).\n",
+    "#     \"\"\"\n",
+    "\n",
+    "#     cap = cv2.VideoCapture(input_path)\n",
+    "#     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))\n",
+    "#     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))\n",
+    "#     fps = int(cap.get(cv2.CAP_PROP_FPS))\n",
+    "\n",
+    "#     fourcc = cv2.VideoWriter_fourcc(*'mp4v')\n",
+    "#     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))\n",
+    "\n",
+    "#     start_time = time.time()\n",
+    "\n",
+    "#     while cap.isOpened() and (time.time() - start_time) < duration_limit:\n",
+    "#         ret, frame = cap.read()\n",
+    "#         if not ret:\n",
+    "#             break\n",
+    "\n",
+    "#         out.write(frame)  # Write the frame directly without processing\n",
+    "\n",
+    "#     cap.release()\n",
+    "#     out.release()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "id": "14c7e2aa",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.270984Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.270788Z",
+     "iopub.status.idle": "2025-03-01T21:26:38.273347Z",
+     "shell.execute_reply": "2025-03-01T21:26:38.272756Z"
+    },
+    "executionInfo": {
+     "elapsed": 23,
+     "status": "error",
+     "timestamp": 1740395379701,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "8I5pw7BKX6ap",
+    "outputId": "59f5ce95-5b81-4935-81ec-8b59a2e3104e",
+    "papermill": {
+     "duration": 0.009017,
+     "end_time": "2025-03-01T21:26:38.274567",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.265550",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# input_video_path = '/kaggle/input/video-tester/test.mp4'\n",
+    "# output_video_path = '/kaggle/working/limited_video.mp4'\n",
+    "\n",
+    "# limit_video_duration(input_video_path, output_video_path)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "id": "8dc29d36",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:38.285119Z",
+     "iopub.status.busy": "2025-03-01T21:26:38.284870Z",
+     "iopub.status.idle": "2025-03-01T21:26:54.725871Z",
+     "shell.execute_reply": "2025-03-01T21:26:54.725175Z"
+    },
+    "executionInfo": {
+     "elapsed": 569,
+     "status": "aborted",
+     "timestamp": 1740395379682,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "5-qGaoVCnQGu",
+    "papermill": {
+     "duration": 16.448019,
+     "end_time": "2025-03-01T21:26:54.727545",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:38.279526",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "\n",
+      "\n",
+      "WARNING ⚠️ inference results will accumulate in RAM unless `stream=True` is passed, causing potential out-of-memory\n",
+      "errors for large sources or long-running streams and videos. See https://docs.ultralytics.com/modes/predict/ for help.\n",
+      "\n",
+      "Example:\n",
+      "    results = model(source=..., stream=True)  # generator of Results objects\n",
+      "    for r in results:\n",
+      "        boxes = r.boxes  # Boxes object for bbox outputs\n",
+      "        masks = r.masks  # Masks object for segment masks outputs\n",
+      "        probs = r.probs  # Class probabilities for classification outputs\n",
+      "\n",
+      "video 1/1 (frame 1/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 54.3ms\n",
+      "video 1/1 (frame 2/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 10.9ms\n",
+      "video 1/1 (frame 3/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.1ms\n",
+      "video 1/1 (frame 4/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.5ms\n",
+      "video 1/1 (frame 5/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 6/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 7/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.0ms\n",
+      "video 1/1 (frame 8/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 9/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.7ms\n",
+      "video 1/1 (frame 10/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.1ms\n",
+      "video 1/1 (frame 11/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.6ms\n",
+      "video 1/1 (frame 12/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 13/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.7ms\n",
+      "video 1/1 (frame 14/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 15/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 16/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 17/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 18/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.4ms\n",
+      "video 1/1 (frame 19/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 20/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.4ms\n",
+      "video 1/1 (frame 21/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 22/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 23/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 24/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 25/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 26/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 27/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 28/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 29/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 30/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.6ms\n",
+      "video 1/1 (frame 31/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.0ms\n",
+      "video 1/1 (frame 32/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 33/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.9ms\n",
+      "video 1/1 (frame 34/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 35/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.7ms\n",
+      "video 1/1 (frame 36/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.5ms\n",
+      "video 1/1 (frame 37/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 38/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.9ms\n",
+      "video 1/1 (frame 39/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 40/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 41/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 42/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 43/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 44/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 45/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 46/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 47/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 48/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 49/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 50/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 51/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 52/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 53/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.4ms\n",
+      "video 1/1 (frame 54/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.2ms\n",
+      "video 1/1 (frame 55/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 56/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 16.3ms\n",
+      "video 1/1 (frame 57/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.8ms\n",
+      "video 1/1 (frame 58/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 14.4ms\n",
+      "video 1/1 (frame 59/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 60/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.5ms\n",
+      "video 1/1 (frame 61/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 62/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 63/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 64/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.6ms\n",
+      "video 1/1 (frame 65/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 66/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.7ms\n",
+      "video 1/1 (frame 67/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 68/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 69/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 70/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.9ms\n",
+      "video 1/1 (frame 71/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 72/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 73/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 74/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 75/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.4ms\n",
+      "video 1/1 (frame 76/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 77/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.1ms\n",
+      "video 1/1 (frame 78/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 79/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 80/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.3ms\n",
+      "video 1/1 (frame 81/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 82/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 83/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.5ms\n",
+      "video 1/1 (frame 84/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 85/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 86/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.5ms\n",
+      "video 1/1 (frame 87/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 88/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.3ms\n",
+      "video 1/1 (frame 89/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.1ms\n",
+      "video 1/1 (frame 90/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 91/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.8ms\n",
+      "video 1/1 (frame 92/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.0ms\n",
+      "video 1/1 (frame 93/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.8ms\n",
+      "video 1/1 (frame 94/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.7ms\n",
+      "video 1/1 (frame 95/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.1ms\n",
+      "video 1/1 (frame 96/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 97/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 98/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 99/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 100/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.0ms\n",
+      "video 1/1 (frame 101/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.4ms\n",
+      "video 1/1 (frame 102/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 103/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 104/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 10.1ms\n",
+      "video 1/1 (frame 105/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.5ms\n",
+      "video 1/1 (frame 106/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 107/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 108/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 109/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 110/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 111/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 112/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 113/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 114/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.4ms\n",
+      "video 1/1 (frame 115/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 116/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 117/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.2ms\n",
+      "video 1/1 (frame 118/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.4ms\n",
+      "video 1/1 (frame 119/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 120/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 121/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.1ms\n",
+      "video 1/1 (frame 122/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 123/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.4ms\n",
+      "video 1/1 (frame 124/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.2ms\n",
+      "video 1/1 (frame 125/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.0ms\n",
+      "video 1/1 (frame 126/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.3ms\n",
+      "video 1/1 (frame 127/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.1ms\n",
+      "video 1/1 (frame 128/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 129/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 130/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 131/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 132/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 133/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 134/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 135/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 136/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 137/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 138/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 139/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 140/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 141/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 142/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.1ms\n",
+      "video 1/1 (frame 143/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.6ms\n",
+      "video 1/1 (frame 144/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 145/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 146/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 147/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 8.9ms\n",
+      "video 1/1 (frame 148/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 10.9ms\n",
+      "video 1/1 (frame 149/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.6ms\n",
+      "video 1/1 (frame 150/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.6ms\n",
+      "video 1/1 (frame 151/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.4ms\n",
+      "video 1/1 (frame 152/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 153/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.4ms\n",
+      "video 1/1 (frame 154/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 13.2ms\n",
+      "video 1/1 (frame 155/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.3ms\n",
+      "video 1/1 (frame 156/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.6ms\n",
+      "video 1/1 (frame 157/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.3ms\n",
+      "video 1/1 (frame 158/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.1ms\n",
+      "video 1/1 (frame 159/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 14.1ms\n",
+      "video 1/1 (frame 160/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.0ms\n",
+      "video 1/1 (frame 161/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.8ms\n",
+      "video 1/1 (frame 162/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.8ms\n",
+      "video 1/1 (frame 163/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.0ms\n",
+      "video 1/1 (frame 164/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.8ms\n",
+      "video 1/1 (frame 165/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 166/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.3ms\n",
+      "video 1/1 (frame 167/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.2ms\n",
+      "video 1/1 (frame 168/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.6ms\n",
+      "video 1/1 (frame 169/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 13.4ms\n",
+      "video 1/1 (frame 170/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.0ms\n",
+      "video 1/1 (frame 171/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.4ms\n",
+      "video 1/1 (frame 172/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 10.8ms\n",
+      "video 1/1 (frame 173/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.9ms\n",
+      "video 1/1 (frame 174/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.1ms\n",
+      "video 1/1 (frame 175/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.1ms\n",
+      "video 1/1 (frame 176/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.7ms\n",
+      "video 1/1 (frame 177/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.9ms\n",
+      "video 1/1 (frame 178/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.0ms\n",
+      "video 1/1 (frame 179/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.9ms\n",
+      "video 1/1 (frame 180/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.5ms\n",
+      "video 1/1 (frame 181/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 182/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 183/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.0ms\n",
+      "video 1/1 (frame 184/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Prioritas Kiri, 8.9ms\n",
+      "video 1/1 (frame 185/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Prioritas Kiri, 8.6ms\n",
+      "video 1/1 (frame 186/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Prioritas Kiri, 8.7ms\n",
+      "video 1/1 (frame 187/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 188/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Prioritas Kiri, 10.3ms\n",
+      "video 1/1 (frame 189/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 190/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Prioritas Kiri, 8.9ms\n",
+      "video 1/1 (frame 191/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 192/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Prioritas Kiri, 13.1ms\n",
+      "video 1/1 (frame 193/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Prioritas Kiri, 8.9ms\n",
+      "video 1/1 (frame 194/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Prioritas Kiri, 9.0ms\n",
+      "video 1/1 (frame 195/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 196/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 197/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 198/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 199/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 200/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.8ms\n",
+      "video 1/1 (frame 201/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 202/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.5ms\n",
+      "video 1/1 (frame 203/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 8.7ms\n",
+      "video 1/1 (frame 204/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 205/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 8.8ms\n",
+      "video 1/1 (frame 206/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.2ms\n",
+      "video 1/1 (frame 207/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.3ms\n",
+      "video 1/1 (frame 208/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.5ms\n",
+      "video 1/1 (frame 209/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.0ms\n",
+      "video 1/1 (frame 210/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 1 Persimpangan 3 Sisi Kiri, 9.1ms\n",
+      "video 1/1 (frame 211/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 212/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 1 Persimpangan 3 Prioritas Kiri, 8.8ms\n",
+      "video 1/1 (frame 213/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 1 Persimpangan 3 Prioritas Kiri, 12.2ms\n",
+      "video 1/1 (frame 214/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.7ms\n",
+      "video 1/1 (frame 215/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.3ms\n",
+      "video 1/1 (frame 216/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 10.2ms\n",
+      "video 1/1 (frame 217/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 8.9ms\n",
+      "video 1/1 (frame 218/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 1 Persimpangan 4, 8.6ms\n",
+      "video 1/1 (frame 219/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 8.5ms\n",
+      "video 1/1 (frame 220/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 8.8ms\n",
+      "video 1/1 (frame 221/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 1 Lampu Lalu Lintas, 8.9ms\n",
+      "video 1/1 (frame 222/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.3ms\n",
+      "video 1/1 (frame 223/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Prioritas Kiri, 9.1ms\n",
+      "video 1/1 (frame 224/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 8.8ms\n",
+      "video 1/1 (frame 225/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Sisi Kiri, 8.7ms\n",
+      "video 1/1 (frame 226/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Dilarang Masuk, 1 Hati-Hati, 11.9ms\n",
+      "video 1/1 (frame 227/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Dilarang Masuk, 1 Hati-Hati, 1 Persimpangan 3 Sisi Kiri, 9.0ms\n",
+      "video 1/1 (frame 228/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Sisi Kiri, 9.1ms\n",
+      "video 1/1 (frame 229/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.1ms\n",
+      "video 1/1 (frame 230/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Dilarang Masuk, 1 Hati-Hati, 9.1ms\n",
+      "video 1/1 (frame 231/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.2ms\n",
+      "video 1/1 (frame 232/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.0ms\n",
+      "video 1/1 (frame 233/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 1 Persimpangan 3 Sisi Kiri, 9.0ms\n",
+      "video 1/1 (frame 234/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Sisi Kiri, 8.8ms\n",
+      "video 1/1 (frame 235/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 8.8ms\n",
+      "video 1/1 (frame 236/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.0ms\n",
+      "video 1/1 (frame 237/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 1 Persimpangan 3 Sisi Kiri, 9.0ms\n",
+      "video 1/1 (frame 238/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 1 Persimpangan 3 Sisi Kiri, 9.0ms\n",
+      "video 1/1 (frame 239/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 1 Persimpangan 3 Sisi Kiri, 8.8ms\n",
+      "video 1/1 (frame 240/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 8.9ms\n",
+      "video 1/1 (frame 241/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 9.0ms\n",
+      "video 1/1 (frame 242/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 1 Persimpangan 3 Sisi Kiri, 9.1ms\n",
+      "video 1/1 (frame 243/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 244/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 1 Persimpangan 3 Sisi Kiri, 8.8ms\n",
+      "video 1/1 (frame 245/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Lampu Lalu Lintas, 1 Persimpangan 3 Sisi Kiri, 8.9ms\n",
+      "video 1/1 (frame 246/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 1 Persimpangan 3 Sisi Kiri, 8.9ms\n",
+      "video 1/1 (frame 247/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Sisi Kiri, 8.7ms\n",
+      "video 1/1 (frame 248/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Lampu Lalu Lintas, 1 Persimpangan 3 Sisi Kiri, 9.3ms\n",
+      "video 1/1 (frame 249/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Penyebrangan Pejalan Kaki, 1 Persimpangan 3 Sisi Kiri, 8.9ms\n",
+      "video 1/1 (frame 250/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Persimpangan 3 Sisi Kiri, 8.7ms\n",
+      "video 1/1 (frame 251/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 8.9ms\n",
+      "video 1/1 (frame 252/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 8.7ms\n",
+      "video 1/1 (frame 253/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 1 Hati-Hati, 8.7ms\n",
+      "video 1/1 (frame 254/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.3ms\n",
+      "video 1/1 (frame 255/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.6ms\n",
+      "video 1/1 (frame 256/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 257/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.9ms\n",
+      "video 1/1 (frame 258/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.6ms\n",
+      "video 1/1 (frame 259/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 260/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.5ms\n",
+      "video 1/1 (frame 261/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 262/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 263/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.5ms\n",
+      "video 1/1 (frame 264/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 265/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.2ms\n",
+      "video 1/1 (frame 266/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 267/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 268/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 269/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 270/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 10.7ms\n",
+      "video 1/1 (frame 271/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 12.8ms\n",
+      "video 1/1 (frame 272/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.9ms\n",
+      "video 1/1 (frame 273/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.8ms\n",
+      "video 1/1 (frame 274/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 275/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 276/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 277/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.9ms\n",
+      "video 1/1 (frame 278/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.7ms\n",
+      "video 1/1 (frame 279/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.0ms\n",
+      "video 1/1 (frame 280/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.6ms\n",
+      "video 1/1 (frame 281/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.9ms\n",
+      "video 1/1 (frame 282/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 283/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.1ms\n",
+      "video 1/1 (frame 284/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.8ms\n",
+      "video 1/1 (frame 285/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.9ms\n",
+      "video 1/1 (frame 286/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 11.6ms\n",
+      "video 1/1 (frame 287/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 8.5ms\n",
+      "video 1/1 (frame 288/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 13.5ms\n",
+      "video 1/1 (frame 289/289) /kaggle/input/video-tester/VID_20250219_064115.mp4: 256x416 (no detections), 9.4ms\n",
+      "Speed: 1.3ms preprocess, 10.2ms inference, 1.7ms postprocess per image at shape (1, 3, 256, 416)\n",
+      "Results saved to \u001b[1mruns/detect/predict\u001b[0m\n"
+     ]
+    }
+   ],
+   "source": [
+    "def prediction_yolo_single_gpu(\n",
+    "    source: str='/kaggle/input/video-tester/VID_20250219_064115.mp4',\n",
+    "    weights: str='/kaggle/input/traffic_sign_model_yolov11/pytorch/default/3/best_1.pt',\n",
+    "    conf: float=0.25,\n",
+    "    save: bool=True,\n",
+    "    **kwargs\n",
+    "    ):\n",
+    "\n",
+    "    model = YOLO(weights)\n",
+    "\n",
+    "    prediction_results = model.predict(\n",
+    "        source=source,\n",
+    "        conf=conf,\n",
+    "        save=save,\n",
+    "        **kwargs\n",
+    "    )\n",
+    "\n",
+    "    # Path of input video after prediction\n",
+    "    avi_path = '/kaggle/working/runs/detect/predict/result4.avi'\n",
+    "\n",
+    "    # Path of the output video to be compressed\n",
+    "    mp4_path = \"/kaggle/working/result_detection_yolov11.mp4\"\n",
+    "\n",
+    "    # Convert .avi to .mp4 using ffmpeg\n",
+    "    os.system(f\"ffmpeg -i {avi_path} -vcodec libx264 {mp4_path}\")\n",
+    "\n",
+    "    return prediction_results\n",
+    "\n",
+    "prediction_results = prediction_yolo_single_gpu()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "id": "acafeb87",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-03-01T21:26:54.764763Z",
+     "iopub.status.busy": "2025-03-01T21:26:54.764475Z",
+     "iopub.status.idle": "2025-03-01T21:26:54.860858Z",
+     "shell.execute_reply": "2025-03-01T21:26:54.859891Z"
+    },
+    "executionInfo": {
+     "elapsed": 890,
+     "status": "ok",
+     "timestamp": 1740395380594,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "xnxKsEGzp7Rp",
+    "outputId": "46d81535-db3d-4650-eed1-88d4072b14b1",
+    "papermill": {
+     "duration": 0.115825,
+     "end_time": "2025-03-01T21:26:54.862221",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:54.746396",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Video file not found.\n"
+     ]
+    }
+   ],
+   "source": [
+    "import os\n",
+    "from base64 import b64encode\n",
+    "from IPython.display import HTML, display\n",
+    "\n",
+    "# Path of input video after prediction\n",
+    "save_path = '/kaggle/working/runs/detect/predict/result1.avi'\n",
+    "\n",
+    "# Path of the output video to be compressed\n",
+    "compressed_path = \"/kaggle/working/result_detection_yolov11.mp4\"\n",
+    "\n",
+    "# Kompres video menggunakan ffmpeg\n",
+    "os.system(f\"ffmpeg -i {save_path} -vcodec libx264 {compressed_path}\")\n",
+    "\n",
+    "if os.path.exists(compressed_path):\n",
+    "    # Read the compressed video\n",
+    "    with open(compressed_path, \"rb\") as video_file:\n",
+    "        video_data = video_file.read()\n",
+    "\n",
+    "    # Encode video in base64 so it can be displayed in HTML\n",
+    "    data_url = \"data:video/mp4;base64,\" + b64encode(video_data).decode()\n",
+    "\n",
+    "    # Embed and display video on notebook\n",
+    "    display(HTML(f\"\"\"\n",
+    "    <video width=\"640\" height=\"480\" controls>\n",
+    "          <source src=\"{data_url}\" type=\"video/mp4\">\n",
+    "    </video>\n",
+    "    \"\"\"))\n",
+    "else:\n",
+    "    print(\"Video file not found.\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "a9588436",
+   "metadata": {
+    "executionInfo": {
+     "elapsed": 6,
+     "status": "ok",
+     "timestamp": 1740395380617,
+     "user": {
+      "displayName": "Aditya Bayhaqie",
+      "userId": "16906297684641538968"
+     },
+     "user_tz": -420
+    },
+    "id": "4i-LZuWURPTr",
+    "papermill": {
+     "duration": 0.017193,
+     "end_time": "2025-03-01T21:26:54.897558",
+     "exception": false,
+     "start_time": "2025-03-01T21:26:54.880365",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "colab": {
+   "provenance": []
+  },
+  "kaggle": {
+   "accelerator": "gpu",
+   "dataSources": [
+    {
+     "datasetId": 6696835,
+     "sourceId": 10791436,
+     "sourceType": "datasetVersion"
+    },
+    {
+     "datasetId": 6697271,
+     "sourceId": 10792052,
+     "sourceType": "datasetVersion"
+    },
+    {
+     "isSourceIdPinned": true,
+     "modelId": 246680,
+     "modelInstanceId": 224942,
+     "sourceId": 268887,
+     "sourceType": "modelInstanceVersion"
+    }
+   ],
+   "dockerImageVersionId": 30887,
+   "isGpuEnabled": true,
+   "isInternetEnabled": true,
+   "language": "python",
+   "sourceType": "notebook"
+  },
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.10.12"
+  },
+  "papermill": {
+   "default_parameters": {},
+   "duration": 38.80192,
+   "end_time": "2025-03-01T21:26:57.441877",
+   "environment_variables": {},
+   "exception": null,
+   "input_path": "__notebook__.ipynb",
+   "output_path": "__notebook__.ipynb",
+   "parameters": {},
+   "start_time": "2025-03-01T21:26:18.639957",
+   "version": "2.6.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
